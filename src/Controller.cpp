@@ -9,10 +9,11 @@
 
 namespace Rgb {
 
-Controller::Controller(string portName): ControllerConfig(portName), readStream(),
+Controller::Controller(string portName): ControllerInfo(portName), readStream(),
 		welcomeCheck("RGBController v([0-9]+)\\.([0-9]+)\\.([0-9]+)\\n.*"),
-		portEffect("Port ([0-9]+) Effect: \\[([0-9]+)\\] [^,]+, Duration: ([0-9]+)ms, Active color: ([0-9]+)"),
-		portColor("Port ([0-9]+) Color ([0-9]+): #([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})")
+		portConfig("Port ([0-9]+) Config: ([0-9]+)"),
+		configEffect("Config ([0-9]+) Effect: \\[([0-9]+)\\] [^,]+, Duration: ([0-9]+)ms, Active color: ([0-9]+)"),
+		configColor("Config ([0-9]+) Color ([0-9]+): #([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})")
 {
 	// Initialize members
 	this->portName = portName;
@@ -144,41 +145,46 @@ void Controller::update() {
 
 void Controller::receivedReply(string reply) {
 	cmatch matches;
-	if (regex_match(reply.c_str(), matches, this->portEffect)) {
-		// Port ([0-9]+) Effect: \\[([0-9]+)\\] [^,]+, Duration: ([0-9]+)ms, Active color: ([0-9]+)
+	if (regex_match(reply.c_str(), matches, this->portConfig)) {
+		// Port ([0-9]+) Config: ([0-9]+)
 		int portIndex = stoi( matches[1].str() );
-		PortConfig config;
-		if (this->controllerPorts.count(portIndex) > 0) {
-			config = this->controllerPorts[portIndex];
+		int configIndex = stoi( matches[2].str() );
+		this->controllerPort[portIndex] = configIndex;
+	} else if (regex_match(reply.c_str(), matches, this->configEffect)) {
+		// Config ([0-9]+) Effect: \\[([0-9]+)\\] [^,]+, Duration: ([0-9]+)ms, Active color: ([0-9]+)
+		int configIndex = stoi( matches[1].str() );
+		ControllerConfig config;
+		if (this->controllerConfig.count(configIndex) > 0) {
+			config = this->controllerConfig[configIndex];
 		}
-		config.setEffectType( (PortConfigType)stoi(matches[2].str()) );
+		config.setEffectType( (ControllerConfigType)stoi(matches[2].str()) );
 		config.setEffectDuration( stoi(matches[3].str()) );
 		config.setEffectColorIndex( stoi(matches[4].str()) );
-		this->controllerPorts[portIndex] = config;
-	} else if (regex_match(reply.c_str(), matches, this->portColor)) {
-		// Port ([0-9]+) Color ([0-9]+): #([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})
-		int portIndex = stoi( matches[1].str() );
+		this->controllerConfig[configIndex] = config;
+	} else if (regex_match(reply.c_str(), matches, this->configColor)) {
+		// Config ([0-9]+) Color ([0-9]+): #([0-9A-F]{2})([0-9A-F]{2})([0-9A-F]{2})
+		int configIndex = stoi( matches[1].str() );
 		int colorIndex = stoi( matches[2].str() );
-		PortConfig config;
-		if (this->controllerPorts.count(portIndex) > 0) {
-			config = this->controllerPorts[portIndex];
+		ControllerConfig config;
+		if (this->controllerConfig.count(configIndex) > 0) {
+			config = this->controllerConfig[configIndex];
 		}
-		PortConfigColor color = config.getColor(colorIndex);
+		ControllerConfigColor color = config.getColor(colorIndex);
 		color.red = stoi(matches[3].str(), 0, 16);
 		color.green = stoi(matches[4].str(), 0, 16);
 		color.blue = stoi(matches[5].str(), 0, 16);
 		config.setColor(colorIndex, color);
-		this->controllerPorts[portIndex] = config;
+		this->controllerConfig[configIndex] = config;
 	}
 	this->outputText(reply);
 }
 
 void Controller::writeCommand(string command) {
 	// Wait until the port is ready
-	sp_return result = sp_wait(this->portWaitEvent, 100);
-	if (result != SP_OK) {
-		throw Exceptions::PortException(Exceptions::ERR_WAIT_FAILED, this->portName, result);
-	}
+	//sp_return result = sp_wait(this->portWaitEvent, 100);
+	//if (result != SP_OK) {
+	//	throw Exceptions::PortException(Exceptions::ERR_WAIT_FAILED, this->portName, result);
+	//}
 	// Send the command
     cout << this->getPortName() << ": => " << command << "\n";
     cout.flush();
@@ -186,6 +192,8 @@ void Controller::writeCommand(string command) {
 	if (bytesWritten != command.length()) {
 		throw Exceptions::PortException(Exceptions::ERR_WRITE_FAILED, this->portName, (sp_return)bytesWritten);
 	}
+	// Flush output buffer
+	sp_flush(this->portHandle, sp_buffer::SP_BUF_OUTPUT);
 }
 
 void Controller::outputText(string text) {
@@ -217,14 +225,19 @@ void Controller::outputBuffer() {
 	this->readStream << output.str();
 }
 
-void Controller::setEffect(int portIndex, PortConfigType effectType, int effectDuration) {
-	Interface::setEffect(portIndex, effectType, effectDuration);
-	ControllerConfig::setEffect(portIndex, effectType, effectDuration);
+void Controller::setConfig(uint32_t portIndex, uint32_t configIndex) {
+	Interface::setConfig(portIndex, configIndex);
+	ControllerInfo::setConfig(portIndex, configIndex);
 }
 
-void Controller::setColor(int portIndex, int colorIndex, uint8_t red, uint8_t green, uint8_t blue) {
-	Interface::setColor(portIndex, colorIndex, red, green, blue);
-	ControllerConfig::setColor(portIndex, colorIndex, red, green, blue);
+void Controller::setEffect(int configIndex, ControllerConfigType effectType, int effectDuration) {
+	Interface::setEffect(configIndex, effectType, effectDuration);
+	ControllerInfo::setEffect(configIndex, effectType, effectDuration);
+}
+
+void Controller::setColor(int configIndex, int colorIndex, uint8_t red, uint8_t green, uint8_t blue) {
+	Interface::setColor(configIndex, colorIndex, red, green, blue);
+	ControllerInfo::setColor(configIndex, colorIndex, red, green, blue);
 }
 
 } /* namespace Rgb */

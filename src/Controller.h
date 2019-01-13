@@ -8,6 +8,7 @@
 #ifndef CONTROLLER_H_
 #define CONTROLLER_H_
 
+#include <cstdint>
 #include <iterator>
 #include <iostream>
 #include <map>
@@ -17,8 +18,8 @@
 #include <boost/thread/thread.hpp>
 #include <boost/timer/timer.hpp>
 
+#include "ControllerInfo.h"
 #include "Interface.h"
-#include "ControllerConfig.h"
 #include "exceptions/PortException.h"
 #include "exceptions/ControllerNotFound.h"
 
@@ -27,7 +28,7 @@ using namespace boost;
 
 namespace Rgb {
 
-class Controller : public ControllerConfig, public Interface {
+class Controller : public ControllerInfo, public Interface {
 protected:
 	sp_port* portHandle;
 	sp_event_set* portWaitEvent;
@@ -48,12 +49,14 @@ public:
 	void receivedReply(string command);
 	void writeCommand(string command);
 
-	void setEffect(int portIndex, PortConfigType effectType, int effectDuration);
-	void setColor(int portIndex, int colorIndex, uint8_t red, uint8_t green, uint8_t blue);
+	void setConfig(uint32_t portIndex, uint32_t configIndex);
+	void setEffect(int configIndex, ControllerConfigType effectType, int effectDuration);
+	void setColor(int configIndex, int colorIndex, uint8_t red, uint8_t green, uint8_t blue);
 private:
 	regex welcomeCheck;
-	regex portEffect;
-	regex portColor;
+	regex portConfig;
+	regex configEffect;
+	regex configColor;
 };
 
 } /* namespace Rgb */

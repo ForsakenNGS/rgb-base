@@ -1,45 +1,52 @@
 /*
- * ControllerConfig.h
+ * PortConfig.h
  *
- *  Created on: Jan 3, 2019
+ *  Created on: Jan 2, 2019
  *      Author: forsaken
  */
 
 #ifndef CONTROLLERCONFIG_H_
 #define CONTROLLERCONFIG_H_
 
-#include "PortConfig.h"
-
-#include <boost/algorithm/string.hpp>
-#include <boost/algorithm/string/find.hpp>
+#include <cstdint>
+#include <map>
 
 using namespace std;
-using namespace boost;
 
 namespace Rgb {
 
+enum ControllerConfigType : uint8_t {
+	EFFECT_STATIC = 0,
+	EFFECT_FADE = 1,
+	EFFECT_BLINK = 2
+};
+
+struct ControllerConfigColor {
+	uint8_t	red;
+	uint8_t	green;
+	uint8_t	blue;
+};
+
 class ControllerConfig {
 protected:
-	string portName;
-	struct ControllerVersion {
-		uint32_t major;
-		uint32_t minor;
-		uint32_t patch;
-	} version;
-	map<uint32_t,PortConfig> controllerPorts;
+	ControllerConfigType			effectType;
+	uint16_t						effectDuration;
+	uint8_t							effectColor;
+	map<int,ControllerConfigColor>	colorList;
 public:
-	ControllerConfig(string portName);
+	ControllerConfig();
 	virtual ~ControllerConfig();
 
-	string getPortName();
-	map<uint32_t,PortConfig>* getPortList();
-	int getVerionMajor();
-	int getVerionMinor();
-	int getVerionPatch();
-	string getVersionString();
-	void setEffect(uint32_t portIndex, PortConfigType effectType, uint32_t effectDuration);
-	void setColor(uint32_t portIndex, uint32_t colorIndex, uint8_t red, uint8_t green, uint8_t blue);
-	void setVersion(uint32_t major, uint32_t minor, uint32_t patch);
+	ControllerConfigType getEffectType();
+	uint16_t getEffectDuration();
+	uint8_t getEffectColorIndex();
+	ControllerConfigColor getColor(int index);
+	uint8_t getColorCount();
+
+	void setEffectType(ControllerConfigType type);
+	void setEffectDuration(uint16_t duration);
+	void setEffectColorIndex(uint8_t colorIndex);
+	void setColor(int index, ControllerConfigColor color);
 };
 
 } /* namespace Rgb */

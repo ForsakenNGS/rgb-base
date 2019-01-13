@@ -1,7 +1,7 @@
 /*
- * ControllerConfig.cpp
+ * PortConfig.cpp
  *
- *  Created on: Jan 3, 2019
+ *  Created on: Jan 2, 2019
  *      Author: forsaken
  */
 
@@ -9,71 +9,54 @@
 
 namespace Rgb {
 
-ControllerConfig::ControllerConfig(string portName): controllerPorts() {
-	// Initialize members
-	this->portName = portName;
-	this->version.major = 0;
-	this->version.minor = 0;
-	this->version.patch = 0;
+ControllerConfig::ControllerConfig(): colorList() {
+	this->effectType = EFFECT_STATIC;
+	this->effectDuration = 0;
+	this->effectColor = 0;
 }
 
 ControllerConfig::~ControllerConfig() {
 
 }
 
-string ControllerConfig::getPortName() {
-	return this->portName;
+ControllerConfigType ControllerConfig::getEffectType() {
+	return this->effectType;
 }
 
-map<uint32_t,PortConfig>* ControllerConfig::getPortList() {
-	return &this->controllerPorts;
+uint16_t ControllerConfig::getEffectDuration() {
+	return this->effectDuration;
 }
 
-int ControllerConfig::getVerionMajor() {
-	return this->version.major;
+uint8_t ControllerConfig::getEffectColorIndex() {
+	return this->effectColor;
 }
 
-int ControllerConfig::getVerionMinor() {
-	return this->version.minor;
-}
-
-int ControllerConfig::getVerionPatch() {
-	return this->version.patch;
-}
-
-string ControllerConfig::getVersionString() {
-	ostringstream versionString;
-	versionString << this->version.major << "." << this->version.minor << "." << this->version.patch;
-	return versionString.str();
-}
-
-void ControllerConfig::setEffect(uint32_t portIndex, PortConfigType effectType, uint32_t effectDuration) {
-	PortConfig config;
-	if (this->controllerPorts.count(portIndex) > 0) {
-		config = this->controllerPorts[portIndex];
+ControllerConfigColor ControllerConfig::getColor(int index) {
+	ControllerConfigColor color;
+	if (this->colorList.count(index) > 0) {
+		color = this->colorList[index];
 	}
-	config.setEffectType( effectType );
-	config.setEffectDuration( effectDuration );
-	this->controllerPorts[portIndex] = config;
+	return color;
 }
 
-void ControllerConfig::setColor(uint32_t portIndex, uint32_t colorIndex, uint8_t red, uint8_t green, uint8_t blue) {
-	PortConfig config;
-	PortConfigColor color;
-	if (this->controllerPorts.count(portIndex) > 0) {
-		config = this->controllerPorts[portIndex];
-	}
-	color.red = red;
-	color.green = green;
-	color.blue = blue;
-	config.setColor(colorIndex, color);
-	this->controllerPorts[portIndex] = config;
+uint8_t ControllerConfig::getColorCount() {
+	return this->colorList.size();
 }
 
-void ControllerConfig::setVersion(uint32_t major, uint32_t minor, uint32_t patch) {
-	this->version.major = major;
-	this->version.minor = minor;
-	this->version.patch = patch;
+void ControllerConfig::setEffectType(ControllerConfigType type) {
+	this->effectType = type;
+}
+
+void ControllerConfig::setEffectDuration(uint16_t duration) {
+	this->effectDuration = duration;
+}
+
+void ControllerConfig::setEffectColorIndex(uint8_t colorIndex) {
+	this->effectColor = colorIndex;
+}
+
+void ControllerConfig::setColor(int index, ControllerConfigColor color) {
+	this->colorList[index] = color;
 }
 
 } /* namespace Rgb */

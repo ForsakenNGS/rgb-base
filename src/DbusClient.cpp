@@ -22,18 +22,25 @@ DbusClient::~DbusClient() {
 
 }
 
-list<std::shared_ptr<ControllerConfig>>* DbusClient::getControllerList() {
+list<std::shared_ptr<ControllerInfo>>* DbusClient::getControllerList() {
 	return &this->controllerList;
 }
 
 bool DbusClient::sendConfiguration(string controllerName) {
-	for (list<std::shared_ptr<ControllerConfig>>::iterator i = this->controllerList.begin(),
+	for (list<std::shared_ptr<ControllerInfo>>::iterator i = this->controllerList.begin(),
 			end = this->controllerList.end(); i != end; i++) {
 		if (i->get()->getPortName().compare(controllerName) == 0) {
-			map<uint32_t,PortConfig>* controllerPorts = i->get()->getPortList();
-			for (map<uint32_t,PortConfig>::iterator itPort = controllerPorts->begin(),
+			map<uint32_t,uint32_t>* controllerPorts = i->get()->getPortList();
+			for (map<uint32_t,uint32_t>::iterator itPort = controllerPorts->begin(),
 					itPortEnd = controllerPorts->end(); itPort != itPortEnd; itPort++) {
-				if (!this->sendConfigurationPort( controllerName, itPort->first, itPort->second )) {
+				if (!this->sendConfigurationActive( controllerName, itPort->first, itPort->second )) {
+					return false;
+				}
+			}
+			map<uint32_t,ControllerConfig>* controllerConfigs = i->get()->getConfigList();
+			for (map<uint32_t,ControllerConfig>::iterator itConfig = controllerConfigs->begin(),
+					itConfigEnd = controllerConfigs->end(); itConfig != itConfigEnd; itConfig++) {
+				if (!this->sendConfigurationSingle( controllerName, itConfig->first, itConfig->second )) {
 					return false;
 				}
 			}
@@ -43,7 +50,7 @@ bool DbusClient::sendConfiguration(string controllerName) {
 	return false;
 }
 
-bool DbusClient::sendConfigurationPort(string controllerName, uint32_t portIndex, PortConfig portConfig) {
+bool DbusClient::sendConfigurationSingle(string controllerName, uint32_t portIndex, ControllerConfig portConfig) {
 	if (!this->sendConfigurationEffect(controllerName, portIndex, portConfig.getEffectType(), portConfig.getEffectDuration())) {
 		return false;
 	}
@@ -56,20 +63,50 @@ bool DbusClient::sendConfigurationPort(string controllerName, uint32_t portIndex
 	return true;
 }
 
-bool DbusClient::sendConfigurationEffect(string controllerName, uint32_t portIndex, uint32_t effectType, uint32_t effectDuration) {
+bool DbusClient::sendConfigurationActive(string controllerName, uint32_t portIndex, uint32_t configIndex) {
+	// Send message
+	DBusMessage* msg = dbus_message_new_method_call("org.forsaken.RgbService", "/org/forsaken/RgbController", "org.forsaken.RgbController", "setConfig");
+	DBusMessageIter msgArgs;
+	DBusPendingCall* pending;
+	// -> Add arguments
+	const char* controllerNameCstr = controllerName.c_str();
+	dbus_uint32_t controllerPortIndex = portIndex;
+	dbus_uint32_t controllerConfigIndex = configIndex;
+	dbus_message_iter_init_append(msg, &msgArgs);
+	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_STRING, &controllerNameCstr);
+	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerPortIndex);
+	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerConfigIndex);
+	// -> Send it
+	dbus_connection_send_with_reply(this->dbusConnection, msg, &pending, -1);
+	dbus_connection_flush(this->dbusConnection);
+	dbus_message_unref(msg);
+	dbus_pending_call_block(pending);
+	// Obtain reply
+	DBusMessage* reply = dbus_pending_call_steal_reply(pending);
+	DBusMessageIter replyArgs;
+	dbus_pending_call_unref(pending);
+	dbus_message_iter_init(reply, &replyArgs);
+	// Process reply
+	dbus_bool_t result = false;
+	dbus_message_iter_get_basic(&replyArgs, &result);
+	dbus_message_unref(reply);
+	return result;
+}
+
+bool DbusClient::sendConfigurationEffect(string controllerName, uint32_t configIndex, uint32_t effectType, uint32_t effectDuration) {
 	// Send message
 	DBusMessage* msg = dbus_message_new_method_call("org.forsaken.RgbService", "/org/forsaken/RgbController", "org.forsaken.RgbController", "setEffect");
 	DBusMessageIter msgArgs;
 	DBusPendingCall* pending;
 	// -> Add arguments
 	const char* controllerNameCstr = controllerName.c_str();
-	dbus_uint32_t controllerPortIndex = portIndex;
-	dbus_uint32_t controllerEffectType = effectType;
+	dbus_uint32_t controllerConfigIndex = configIndex;
+	dbus_uint16_t controllerEffectType = effectType;
 	dbus_uint32_t controllerEffectDuration = effectDuration;
 	dbus_message_iter_init_append(msg, &msgArgs);
 	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_STRING, &controllerNameCstr);
-	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerPortIndex);
-	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerEffectType);
+	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerConfigIndex);
+	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT16, &controllerEffectType);
 	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerEffectDuration);
 	// -> Send it
 	dbus_connection_send_with_reply(this->dbusConnection, msg, &pending, -1);
@@ -88,7 +125,7 @@ bool DbusClient::sendConfigurationEffect(string controllerName, uint32_t portInd
 	return result;
 }
 
-bool DbusClient::sendConfigurationColor(string controllerName, uint32_t portIndex, uint32_t colorIndex, PortConfigColor color) {
+bool DbusClient::sendConfigurationColor(string controllerName, uint32_t portIndex, uint32_t colorIndex, ControllerConfigColor color) {
 	// Send message
 	DBusMessage* msg = dbus_message_new_method_call("org.forsaken.RgbService", "/org/forsaken/RgbController", "org.forsaken.RgbController", "setColor");
 	DBusMessageIter msgArgs;
@@ -97,16 +134,42 @@ bool DbusClient::sendConfigurationColor(string controllerName, uint32_t portInde
 	const char* controllerNameCstr = controllerName.c_str();
 	dbus_uint32_t controllerPortIndex = portIndex;
 	dbus_uint32_t controllerColorIndex = colorIndex;
-	dbus_uint32_t controllerColorRed = color.red;
-	dbus_uint32_t controllerColorGreen = color.green;
-	dbus_uint32_t controllerColorBlue = color.blue;
+	dbus_uint16_t controllerColorRed = color.red;
+	dbus_uint16_t controllerColorGreen = color.green;
+	dbus_uint16_t controllerColorBlue = color.blue;
 	dbus_message_iter_init_append(msg, &msgArgs);
 	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_STRING, &controllerNameCstr);
 	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerPortIndex);
 	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerColorIndex);
-	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerColorRed);
-	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerColorGreen);
-	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT32, &controllerColorBlue);
+	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT16, &controllerColorRed);
+	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT16, &controllerColorGreen);
+	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_UINT16, &controllerColorBlue);
+	// -> Send it
+	dbus_connection_send_with_reply(this->dbusConnection, msg, &pending, -1);
+	dbus_connection_flush(this->dbusConnection);
+	dbus_message_unref(msg);
+	dbus_pending_call_block(pending);
+	// Obtain reply
+	DBusMessage* reply = dbus_pending_call_steal_reply(pending);
+	DBusMessageIter replyArgs;
+	dbus_pending_call_unref(pending);
+	dbus_message_iter_init(reply, &replyArgs);
+	// Process reply
+	dbus_bool_t result = false;
+	dbus_message_iter_get_basic(&replyArgs, &result);
+	dbus_message_unref(reply);
+	return result;
+}
+
+bool DbusClient::writeToEeprom() {
+	// Send message
+	DBusMessage* msg = dbus_message_new_method_call("org.forsaken.RgbService", "/org/forsaken/RgbController", "org.forsaken.RgbController", "writeToEeprom");
+	DBusMessageIter msgArgs;
+	DBusPendingCall* pending;
+	// -> Add arguments
+	const char* controllerNameCstr = "*";
+	dbus_message_iter_init_append(msg, &msgArgs);
+	dbus_message_iter_append_basic(&msgArgs, DBUS_TYPE_STRING, &controllerNameCstr);
 	// -> Send it
 	dbus_connection_send_with_reply(this->dbusConnection, msg, &pending, -1);
 	dbus_connection_flush(this->dbusConnection);
@@ -156,7 +219,7 @@ void DbusClient::updateControllers() {
 		dbus_message_iter_get_basic(&replyArgs, &controllerVersionPatch);
 		dbus_message_iter_next(&replyArgs);
 		string controllerName(controllerNameCstr);
-		std::shared_ptr<ControllerConfig> controller = std::make_shared<ControllerConfig>(controllerName);
+		std::shared_ptr<ControllerInfo> controller = std::make_shared<ControllerInfo>(controllerName);
 		controller->setVersion(controllerVersionMajor, controllerVersionMinor, controllerVersionPatch);
 		this->controllerList.push_back(controller);
 		updateConfiguration(controllerName, controller);
@@ -164,7 +227,7 @@ void DbusClient::updateControllers() {
 	dbus_message_unref(reply);
 }
 
-void DbusClient::updateConfiguration(string controllerName, std::shared_ptr<ControllerConfig> controller) {
+void DbusClient::updateConfiguration(string controllerName, std::shared_ptr<ControllerInfo> controller) {
 	// Send message
 	DBusMessage* msg = dbus_message_new_method_call("org.forsaken.RgbService", "/org/forsaken/RgbController", "org.forsaken.RgbController", "getConfig");
 	DBusMessageIter msgArgs;
@@ -184,10 +247,24 @@ void DbusClient::updateConfiguration(string controllerName, std::shared_ptr<Cont
 	dbus_pending_call_unref(pending);
 	dbus_message_iter_init(reply, &replyArgs);
 	dbus_uint32_t portCount = 0;
+	dbus_uint32_t configCount = 0;
+	// Read ports
 	dbus_message_iter_get_basic(&replyArgs, &portCount);
 	dbus_message_iter_next(&replyArgs);
 	for (uint32_t portIndex = 0; portIndex < portCount; portIndex++) {
-		dbus_uint32_t effectType = 0;
+		dbus_uint32_t portId = 0;
+		dbus_uint32_t configId = 0;
+		dbus_message_iter_get_basic(&replyArgs, &portId);
+		dbus_message_iter_next(&replyArgs);
+		dbus_message_iter_get_basic(&replyArgs, &configId);
+		dbus_message_iter_next(&replyArgs);
+		controller->setConfig(portId, configId);
+	}
+	// Read configurations
+	dbus_message_iter_get_basic(&replyArgs, &configCount);
+	dbus_message_iter_next(&replyArgs);
+	for (uint32_t configIndex = 0; configIndex < configCount; configIndex++) {
+		dbus_uint16_t effectType = 0;
 		dbus_uint32_t effectDuration = 0;
 		dbus_uint32_t effectColorCount = 0;
 		dbus_message_iter_get_basic(&replyArgs, &effectType);
@@ -196,25 +273,35 @@ void DbusClient::updateConfiguration(string controllerName, std::shared_ptr<Cont
 		dbus_message_iter_next(&replyArgs);
 		dbus_message_iter_get_basic(&replyArgs, &effectColorCount);
 		dbus_message_iter_next(&replyArgs);
-		controller->setEffect(portIndex, (PortConfigType)effectType, effectDuration);
+		controller->setEffect(configIndex, (ControllerConfigType)effectType, effectDuration);
 		for (uint32_t colorIndex = 0; colorIndex < effectColorCount; colorIndex++) {
-			dbus_uint32_t effectColorRed = 0;
-			dbus_uint32_t effectColorGreen = 0;
-			dbus_uint32_t effectColorBlue = 0;
+			dbus_uint16_t effectColorRed = 0;
+			dbus_uint16_t effectColorGreen = 0;
+			dbus_uint16_t effectColorBlue = 0;
 			dbus_message_iter_get_basic(&replyArgs, &effectColorRed);
 			dbus_message_iter_next(&replyArgs);
 			dbus_message_iter_get_basic(&replyArgs, &effectColorGreen);
 			dbus_message_iter_next(&replyArgs);
 			dbus_message_iter_get_basic(&replyArgs, &effectColorBlue);
 			dbus_message_iter_next(&replyArgs);
-			controller->setColor(portIndex, colorIndex, effectColorRed, effectColorGreen, effectColorBlue);
+			controller->setColor(configIndex, colorIndex, effectColorRed, effectColorGreen, effectColorBlue);
 		}
 	}
 	dbus_message_unref(reply);
 }
 
-void DbusClient::setEffect(string controllerName, uint32_t portIndex, PortConfigType effectType, uint32_t effectDuration) {
-	for (list<std::shared_ptr<ControllerConfig>>::iterator i = this->controllerList.begin(),
+void DbusClient::setConfig(string controllerName, uint32_t portIndex, uint32_t configIndex) {
+	for (list<std::shared_ptr<ControllerInfo>>::iterator i = this->controllerList.begin(),
+			end = this->controllerList.end(); i != end; i++) {
+		if (i->get()->getPortName().compare(controllerName) == 0) {
+			i->get()->setConfig(portIndex, configIndex);
+			return;
+		}
+	}
+}
+
+void DbusClient::setEffect(string controllerName, uint32_t portIndex, ControllerConfigType effectType, uint32_t effectDuration) {
+	for (list<std::shared_ptr<ControllerInfo>>::iterator i = this->controllerList.begin(),
 			end = this->controllerList.end(); i != end; i++) {
 		if (i->get()->getPortName().compare(controllerName) == 0) {
 			i->get()->setEffect(portIndex, effectType, effectDuration);
@@ -224,7 +311,7 @@ void DbusClient::setEffect(string controllerName, uint32_t portIndex, PortConfig
 }
 
 void DbusClient::setColor(string controllerName, uint32_t portIndex, uint32_t colorIndex, uint8_t red, uint8_t green, uint8_t blue) {
-	for (list<std::shared_ptr<ControllerConfig>>::iterator i = this->controllerList.begin(),
+	for (list<std::shared_ptr<ControllerInfo>>::iterator i = this->controllerList.begin(),
 			end = this->controllerList.end(); i != end; i++) {
 		if (i->get()->getPortName().compare(controllerName) == 0) {
 			i->get()->setColor(portIndex, colorIndex, red, green, blue);
